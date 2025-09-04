@@ -26,138 +26,130 @@ export function CallNotificationPopup({
   const [popupState, setPopupState] = useState<PopupState>('calling')
   const [mounted, setMounted] = useState(false)
   const [currentNotification, setCurrentNotification] = useState<{orderType: 'takeout' | 'dine_in', orderNumber: number} | null>(null)
-  const [hasExecuted, setHasExecuted] = useState(false) // 알림 실행 여부 추적
-  const isPlayingRef = useRef(false)
+  const [notificationCount, setNotificationCount] = useState(0) // 0, 1, 2로 알림 횟수 추적
+  const isExecutingRef = useRef(false) // 중복 실행 방지
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null) // 타이머 참조
 
-  // ===== 모듈화된 함수들 =====
-  // 1. 음성 재생 모듈: 주문 호출 음성을 재생
-  // 2. 팝업 제어 모듈: 팝업의 전체 생명주기를 관리
-
-  // 음성 재생 모듈
-  const playVoiceAnnouncement = useCallback((
+  // ===== 새로운 알림 시스템 (정확히 2번 실행) =====
+  
+  // 단일 음성 재생 함수
+  const playVoiceOnce = useCallback((
     orderType: 'takeout' | 'dine_in',
     orderNumber: number,
-    onVoiceComplete?: () => void
+    notificationNumber: number
   ) => {
     if (!audioEnabled || !('speechSynthesis' in window)) {
       console.log('[CallNotificationPopup] 음성 합성 비활성화 또는 지원되지 않음')
-      onVoiceComplete?.()
       return
     }
 
-    console.log('[CallNotificationPopup] 음성 안내 시작')
+    console.log(`[CallNotificationPopup] ${notificationNumber}번째 음성 안내 시작`)
 
-    // 브라우저에서 음성 합성 API가 지원되는지 확인
-    if ('speechSynthesis' in window) {
-      // 주문 유형과 번호를 기반으로 한국어 발표문 생성
-      const announcementText = createKoreanAnnouncement(orderType, orderNumber)
+    const announcementText = createKoreanAnnouncement(orderType, orderNumber)
+    const utterance = new SpeechSynthesisUtterance(announcementText)
+    utterance.lang = 'ko-KR'
+    utterance.volume = 0.8
+    utterance.rate = 0.9
+    utterance.pitch = 1.0
 
-      // 음성 재생 횟수 및 최대 재생 횟수 설정 (단 1회)
-      let playCount = 0
-      const maxPlays = 1
-
-      // 음성 재생 함수 정의
-      const playVoice = () => {
-        // 최대 재생 횟수에 도달하면 재생 중단
-        if (playCount >= maxPlays) {
-          onVoiceComplete?.()
-          return
-        }
-
-        // 재생 시도 횟수 표시 (실제 성공 횟수 + 1)
-        const attemptCount = playCount + 1
-        console.log(`[CallNotificationPopup] 음성 재생 시도 ${attemptCount}회 / ${maxPlays}회`)
-
-        // SpeechSynthesisUtterance 객체 생성 및 설정
-        const utterance = new SpeechSynthesisUtterance(announcementText)
-        utterance.lang = 'ko-KR'        // 한국어 설정
-        utterance.volume = 0.8          // 볼륨 설정 (0.0 ~ 1.0)
-        utterance.rate = 0.9            // 속도 설정 (0.1 ~ 10.0)
-        utterance.pitch = 1.0           // 피치 설정 (0 ~ 2)
-
-        // 음성 재생 완료 이벤트 핸들러 (단 1회 재생 후 즉시 종료)
-        utterance.onend = () => {
-          playCount++
-          console.log(`[CallNotificationPopup] 음성 재생 성공 ${playCount}회 완료`)
-          console.log('[CallNotificationPopup] 음성 안내 완료 - 즉시 종료')
-          onVoiceComplete?.()
-        }
-
-        // 음성 재생 오류 이벤트 핸들러 (재시도 없이 즉시 종료)
-        utterance.onerror = () => {
-          console.error('[CallNotificationPopup] 음성 오류 - 즉시 종료')
-          onVoiceComplete?.()
-        }
-
-        // 음성 재생 시작
-        window.speechSynthesis.speak(utterance)
-      }
-
-      // 지연 없이 즉시 음성 재생 시작 (단 1회)
-      playVoice()
+    utterance.onend = () => {
+      console.log(`[CallNotificationPopup] ${notificationNumber}번째 음성 재생 완료`)
     }
+
+    utterance.onerror = () => {
+      console.error(`[CallNotificationPopup] ${notificationNumber}번째 음성 재생 오류`)
+    }
+
+    window.speechSynthesis.speak(utterance)
   }, [audioEnabled])
 
-  // 팝업 제어 모듈 (타임아웃 없이 단일 실행)
-  const startPopupSequence = useCallback((
+  // 단일 알림 실행 함수 (팝업 + 음성)
+  const executeNotification = useCallback((
     orderType: 'takeout' | 'dine_in',
-    orderNumber: number
+    orderNumber: number,
+    notificationNumber: number
   ) => {
-    console.log('[CallNotificationPopup] 팝업 시퀀스 시작:', { orderType, orderNumber })
-
-    // 팝업을 calling 상태로 설정
+    console.log(`[CallNotificationPopup] ${notificationNumber}번째 알림 실행`)
+    
+    // 팝업 상태 설정
     setPopupState('calling')
-
-    // 음성 재생 시작 (동시에)
-    playVoiceAnnouncement(orderType, orderNumber, () => {
-      console.log('[CallNotificationPopup] 음성 재생 완료 콜백 - 팝업 종료 진행')
-      // 음성 재생 완료 즉시 완료 단계로 전환하고 종료
+    
+    // 음성 재생
+    playVoiceOnce(orderType, orderNumber, notificationNumber)
+    
+    // 팝업 표시 시간 (3초)
+    setTimeout(() => {
       setPopupState('completed')
-      setPopupState('hiding')
-      setHasExecuted(false)
-      onComplete()
-    })
-  }, [playVoiceAnnouncement, onComplete])
+      setTimeout(() => {
+        setPopupState('hiding')
+      }, 1000) // completed 상태를 1초간 표시
+    }, 3000)
+  }, [playVoiceOnce])
 
-  // 포털 렌더링을 위한 컴포넌트 마운트 상태 확인
+  // 컴포넌트 마운트 상태 확인
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // 충돌 방지를 위해 비활성화된 기존 큐 프로세서
+  // 메인 알림 로직 - 정확히 2번 실행
   useEffect(() => {
-    // 직접 처리와의 충돌 방지를 위해 큐 시스템 비활성화
-    console.log('[CallNotificationPopup] 충돌 방지를 위해 큐 프로세서 비활성화됨')
-    return () => {
-      // 정리 작업만 수행
-      if (isPlayingRef.current) {
-        window.speechSynthesis.cancel()
-        isPlayingRef.current = false
-      }
-    }
-  }, [])
+    console.log('[CallNotificationPopup] 상태 변경:', { isVisible, notificationCount, isExecuting: isExecutingRef.current })
 
-    // 충돌 방지를 위해 제거된 기존 코드
-
-  // 팝업 표시 상태 변경 감지 - 단 한 번만 실행 (타임아웃 제거)
-  useEffect(() => {
-    console.log('[CallNotificationPopup] 팝업 표시 상태 변경:', { isVisible, hasExecuted })
-
+    // 숨김 상태일 때 초기화
     if (!isVisible) {
       console.log('[CallNotificationPopup] 팝업 숨김, 상태 초기화')
       setCurrentNotification(null)
       setPopupState('calling')
-      setHasExecuted(false)
+      setNotificationCount(0)
+      isExecutingRef.current = false
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
       return
     }
 
-    if (isVisible && !hasExecuted) {
-      console.log('[CallNotificationPopup] 새 알림 실행 시작 (타임아웃 없이 1회 실행)')
-      setHasExecuted(true)
-      setCurrentNotification({ orderType, orderNumber })
-      startPopupSequence(orderType, orderNumber)
+    // 이미 실행 중이거나 완료된 경우 중복 실행 방지
+    if (isExecutingRef.current || notificationCount >= 2) {
+      return
     }
-  }, [isVisible, hasExecuted, orderType, orderNumber, startPopupSequence])
+
+    // 첫 번째 표시일 때만 알림 시퀀스 시작
+    if (isVisible && notificationCount === 0) {
+      console.log('[CallNotificationPopup] 알림 시퀀스 시작 - 2번 실행 예정')
+      isExecutingRef.current = true
+      setCurrentNotification({ orderType, orderNumber })
+      
+      // 첫 번째 알림 즉시 실행
+      setNotificationCount(1)
+      executeNotification(orderType, orderNumber, 1)
+      
+      // 두 번째 알림 4초 후 실행
+      timeoutRef.current = setTimeout(() => {
+        console.log('[CallNotificationPopup] 두 번째 알림 실행')
+        setNotificationCount(2)
+        executeNotification(orderType, orderNumber, 2)
+        
+        // 6초 후 완전 종료 (두 번째 알림의 팝업 시간 고려)
+        timeoutRef.current = setTimeout(() => {
+          console.log('[CallNotificationPopup] 알림 시퀀스 완료')
+          onComplete()
+        }, 6000)
+      }, 4000)
+    }
+  }, [isVisible, notificationCount, orderType, orderNumber, executeNotification, onComplete])
+
+  // 클린업
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+      }
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
 
   // 표시 중이지만 큐에서 현재 알림이 없는 경우 props로부터 생성
   const displayNotification = currentNotification || (isVisible ? { orderType, orderNumber } : null)
