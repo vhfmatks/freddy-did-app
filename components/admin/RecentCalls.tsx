@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Database } from '@/types/database'
+import { useOrderCallsRealtime } from '@/lib/hooks/useOrderCallsRealtime'
 
 type OrderCall = Database['public']['Tables']['order_calls']['Row']
 
@@ -15,83 +16,77 @@ export function RecentCalls({ storeId }: RecentCallsProps) {
   const [displayMinutes, setDisplayMinutes] = useState(5)
   const [showRecallModal, setShowRecallModal] = useState(false)
   const [selectedCall, setSelectedCall] = useState<OrderCall | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const supabase = createClient()
 
-  useEffect(() => {
-    // Fetch recent calls
-    const fetchCalls = async () => {
-      const cutoffTime = new Date()
-      cutoffTime.setMinutes(cutoffTime.getMinutes() - displayMinutes)
+  // Fetch recent calls function
+  const fetchCalls = useCallback(async () => {
+    console.log('fetchCalls 시작')
+    const cutoffTime = new Date()
+    cutoffTime.setMinutes(cutoffTime.getMinutes() - displayMinutes)
 
-      const { data, error } = await supabase
-        .from('order_calls')
-        .select('*')
-        .eq('store_id', storeId)
-        .is('deleted_at', null)
-        .gte('called_at', cutoffTime.toISOString())
-        .order('called_at', { ascending: false })
-        .limit(20)
+    const { data, error } = await supabase
+      .from('order_calls')
+      .select('*')
+      .eq('store_id', storeId)
+      .or('deleted_at.is.null,deleted_at.lt.' + cutoffTime.toISOString()) // deleted_at이 null이거나 cutoffTime보다 이전인 경우
+      .gte('called_at', cutoffTime.toISOString())
+      .order('called_at', { ascending: false })
+      .limit(20)
 
-      if (!error && data) setCalls(data)
+    console.log('fetchCalls 결과:', { data, error, count: data?.length })
+
+    if (!error && data) {
+      setCalls(data)
+      console.log('calls state 업데이트됨:', data.length, '개 항목')
+    } else if (error) {
+      console.error('fetchCalls 오류:', error)
     }
+  }, [storeId, displayMinutes, supabase])
 
+  // Setup realtime subscription
+  useOrderCallsRealtime({
+    storeId,
+    onInsert: (newCall) => {
+      console.log('[Admin] New call inserted:', newCall)
+      setCalls(prev => {
+        // Check if call is within display time range
+        const cutoffTime = new Date()
+        cutoffTime.setMinutes(cutoffTime.getMinutes() - displayMinutes)
+        if (new Date(newCall.called_at) >= cutoffTime) {
+          return [newCall, ...prev.filter(c => c.id !== newCall.id)].slice(0, 20)
+        }
+        return prev
+      })
+    },
+    onUpdate: (updatedCall) => {
+      console.log('[Admin] Call updated:', updatedCall)
+      if (updatedCall.deleted_at) {
+        console.log('[Admin] Call marked as deleted, removing:', updatedCall.id)
+        setCalls(prev => prev.filter(call => call.id !== updatedCall.id))
+      } else {
+        setCalls(prev => prev.map(call =>
+          call.id === updatedCall.id ? updatedCall : call
+        ))
+      }
+    },
+    onDelete: (deletedCall) => {
+      console.log('[Admin] Call deleted:', deletedCall)
+      setCalls(prev => prev.filter(call => call.id !== deletedCall.id))
+    },
+    debug: true
+  })
+
+  useEffect(() => {
     fetchCalls()
-
-    // Subscribe to realtime updates with better handling
-    const channel = supabase
-      .channel(`admin-calls-${storeId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'order_calls',
-          filter: `store_id=eq.${storeId}`
-        },
-        (payload) => {
-          const newCall = payload.new as OrderCall
-          setCalls(prev => [newCall, ...prev].slice(0, 20))
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'order_calls',
-          filter: `store_id=eq.${storeId}`
-        },
-        (payload) => {
-          const deletedCall = payload.old as OrderCall
-          setCalls(prev => prev.filter(call => call.id !== deletedCall.id))
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'order_calls',
-          filter: `store_id=eq.${storeId}`
-        },
-        (payload) => {
-          const updatedCall = payload.new as OrderCall
-          // Update the call in the list
-          setCalls(prev => prev.map(call => 
-            call.id === updatedCall.id ? updatedCall : call
-          ))
-        }
-      )
-      .subscribe()
 
     // Refresh every minute to remove old calls
     const interval = setInterval(fetchCalls, 60000)
 
     return () => {
-      supabase.removeChannel(channel)
       clearInterval(interval)
     }
-  }, [storeId, displayMinutes, supabase])
+  }, [storeId, displayMinutes, fetchCalls])
 
   const handleRecallClick = (call: OrderCall) => {
     setSelectedCall(call)
@@ -126,19 +121,30 @@ export function RecentCalls({ storeId }: RecentCallsProps) {
   }
 
   const handleDelete = async (id: string) => {
+    if (deletingId) return // 이미 삭제 중인 경우 중복 클릭 방지
+
+    setDeletingId(id)
     try {
+      // Soft delete by updating deleted_at field
       const { error } = await supabase
         .from('order_calls')
         .update({ deleted_at: new Date().toISOString() })
         .eq('id', id)
-      
+
       if (error) {
+        console.error('삭제 오류:', error)
+        // Only show alert for actual errors
         alert('삭제 중 오류가 발생했습니다.')
-      } else {
-        
+        return
       }
+
+      // The realtime subscription will handle removing the item from the UI
+      // No need to call fetchCalls or show success alert
     } catch (error) {
-      
+      console.error('삭제 예외:', error)
+      alert('삭제 중 오류가 발생했습니다.')
+    } finally {
+      setDeletingId(null)
     }
   }
 
@@ -199,9 +205,35 @@ export function RecentCalls({ storeId }: RecentCallsProps) {
                 </button>
                 <button
                   onClick={() => handleDelete(call.id)}
-                  className="rounded bg-red-200 px-3 py-1 text-sm text-red-900 hover:bg-red-300"
+                  disabled={deletingId === call.id}
+                  className={`rounded px-3 py-1 text-sm font-medium ${
+                    deletingId === call.id
+                      ? 'bg-red-100 text-red-600 cursor-not-allowed'
+                      : 'bg-red-200 text-red-900 hover:bg-red-300'
+                  }`}
                 >
-                  삭제
+                  {deletingId === call.id ? (
+                    <div className="flex items-center space-x-1">
+                      <svg className="h-3 w-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
+                      </svg>
+                      <span>삭제 중...</span>
+                    </div>
+                  ) : (
+                    '삭제'
+                  )}
                 </button>
               </div>
             </div>

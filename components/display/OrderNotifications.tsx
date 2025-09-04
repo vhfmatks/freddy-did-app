@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { Database } from '@/types/database'
 
 type OrderCall = Database['public']['Tables']['order_calls']['Row']
@@ -9,9 +10,20 @@ interface OrderNotificationsProps {
 }
 
 export function OrderNotifications({ calls }: OrderNotificationsProps) {
-  // Separate calls by type
+  // Debug logging
+  useEffect(() => {
+    console.log('[OrderNotifications] Props changed - Received calls:', calls.length, 'total')
+    console.log('[OrderNotifications] Current calls list:')
+    calls.forEach((call, index) => {
+      console.log(`  ${index + 1}. ${call.type} #${call.number} (ID: ${call.id.slice(-8)}) - ${new Date(call.called_at).toLocaleTimeString()}`)
+    })
+  }, [calls])
+
+  // Separate calls by type with additional logging
   const takeoutCalls = calls.filter(call => call.type === 'takeout')
   const dineInCalls = calls.filter(call => call.type === 'dine_in')
+  
+  console.log('[OrderNotifications] Filtered - Takeout:', takeoutCalls.length, 'Dine-in:', dineInCalls.length)
 
   return (
     <div className="h-full flex flex-col">

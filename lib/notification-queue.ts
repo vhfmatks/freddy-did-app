@@ -26,10 +26,13 @@ class NotificationQueue {
       timestamp: Date.now()
     }
 
+    console.log('[NotificationQueue] Enqueuing notification:', queuedNotification)
     this.queue.push(queuedNotification)
+    console.log('[NotificationQueue] Queue size:', this.queue.length, 'isProcessing:', this.isProcessing)
 
     // Start processing if not already processing
     if (!this.isProcessing) {
+      console.log('[NotificationQueue] Starting processing')
       this.processNext()
     }
   }
@@ -38,6 +41,7 @@ class NotificationQueue {
    * Set the callback function that will process each notification
    */
   setProcessor(callback: (notification: QueuedNotification) => Promise<void>): void {
+    console.log('[NotificationQueue] Setting processor callback')
     this.onProcessCallback = callback
   }
 
@@ -45,30 +49,37 @@ class NotificationQueue {
    * Process the next notification in the queue
    */
   private async processNext(): Promise<void> {
+    console.log('[NotificationQueue] processNext called - isProcessing:', this.isProcessing, 'queue length:', this.queue.length)
+    
     if (this.isProcessing || this.queue.length === 0) {
+      console.log('[NotificationQueue] Skipping processing - already processing or empty queue')
       return
     }
 
     this.isProcessing = true
     this.currentNotification = this.queue.shift()!
-
-    
+    console.log('[NotificationQueue] Processing notification:', this.currentNotification)
 
     if (this.onProcessCallback) {
+      console.log('[NotificationQueue] Calling processor callback')
       try {
         await this.onProcessCallback(this.currentNotification)
-      } catch {
+        console.log('[NotificationQueue] Processor callback completed successfully')
+      } catch (error) {
+        console.error('[NotificationQueue] Processor callback error:', error)
       }
+    } else {
+      console.warn('[NotificationQueue] No processor callback set!')
     }
 
     // Mark as completed
     this.currentNotification = null
     this.isProcessing = false
-
-    
+    console.log('[NotificationQueue] Notification processing completed')
 
     // Process next notification if available
     if (this.queue.length > 0) {
+      console.log('[NotificationQueue] Processing next notification in 500ms')
       // Small delay to prevent overwhelming
       setTimeout(() => this.processNext(), 500)
     }

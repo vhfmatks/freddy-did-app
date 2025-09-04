@@ -1,17 +1,41 @@
 -- Enable Realtime for order_calls table
--- Supabase SQL Editor에서 실행하세요
-
--- 1. Realtime Publication 생성 (이미 있을 수 있음)
-CREATE PUBLICATION IF NOT EXISTS supabase_realtime;
-
--- 2. order_calls 테이블을 Realtime Publication에 추가
 ALTER PUBLICATION supabase_realtime ADD TABLE order_calls;
 
--- 3. Realtime이 활성화되었는지 확인
+-- Check if realtime is enabled
 SELECT 
-  schemaname,
-  tablename 
+    schemaname,
+    tablename 
 FROM 
-  pg_publication_tables 
+    pg_publication_tables 
 WHERE 
-  pubname = 'supabase_realtime';
+    pubname = 'supabase_realtime';
+
+-- Ensure RLS policies allow UPDATE operations
+-- This policy allows authenticated users to update order_calls for their store
+CREATE POLICY "Allow admins to update order_calls" ON order_calls
+    FOR UPDATE
+    USING (
+        EXISTS (
+            SELECT 1 FROM store_admins 
+            WHERE store_admins.store_id = order_calls.store_id 
+            AND store_admins.user_id = auth.uid()
+        )
+    )
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM store_admins 
+            WHERE store_admins.store_id = order_calls.store_id 
+            AND store_admins.user_id = auth.uid()
+        )
+    );
+
+-- Ensure SELECT policy is also in place for realtime to work
+CREATE POLICY "Allow admins to view order_calls" ON order_calls
+    FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM store_admins 
+            WHERE store_admins.store_id = order_calls.store_id 
+            AND store_admins.user_id = auth.uid()
+        )
+    );

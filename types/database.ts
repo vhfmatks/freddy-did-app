@@ -60,6 +60,7 @@ export interface Database {
           type: 'takeout' | 'dine_in'
           called_at: string
           admin_id: string
+          deleted_at: string | null
         }
         Insert: {
           id?: string
@@ -68,6 +69,7 @@ export interface Database {
           type: 'takeout' | 'dine_in'
           called_at?: string
           admin_id: string
+          deleted_at?: string | null
         }
         Update: {
           id?: string
@@ -76,6 +78,7 @@ export interface Database {
           type?: 'takeout' | 'dine_in'
           called_at?: string
           admin_id?: string
+          deleted_at?: string | null
         }
       }
       store_images: {
