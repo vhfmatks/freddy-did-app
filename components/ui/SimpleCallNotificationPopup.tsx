@@ -17,6 +17,7 @@ export function SimpleCallNotificationPopup({
 }: SimpleCallNotificationPopupProps) {
   const [mounted, setMounted] = useState(false)
   const [animationState, setAnimationState] = useState<AnimationState>('enter')
+  const [wasVisible, setWasVisible] = useState(false)
 
   // 컴포넌트 마운트 상태
   useEffect(() => {
@@ -26,16 +27,24 @@ export function SimpleCallNotificationPopup({
   // 가시성 변경에 따른 애니메이션 상태 관리
   useEffect(() => {
     if (isVisible && notification) {
-      setAnimationState('enter')
-      // 입장 애니메이션 후 표시 상태로 전환
-      const timer = setTimeout(() => {
+      if (!wasVisible) {
+        // 처음 표시될 때만 enter 애니메이션 실행
+        setAnimationState('enter')
+        setWasVisible(true)
+        // 입장 애니메이션 후 표시 상태로 전환
+        const timer = setTimeout(() => {
+          setAnimationState('show')
+        }, 100)
+        return () => clearTimeout(timer)
+      } else {
+        // 이미 표시된 상태에서는 내용만 업데이트 (애니메이션 없음)
         setAnimationState('show')
-      }, 100)
-      return () => clearTimeout(timer)
+      }
     } else if (!isVisible) {
       setAnimationState('exit')
+      setWasVisible(false)
     }
-  }, [isVisible, notification])
+  }, [isVisible, notification, wasVisible])
 
   // 마운트되지 않았거나 알림이 없으면 렌더링하지 않음
   if (!mounted || !notification) {
@@ -61,7 +70,7 @@ export function SimpleCallNotificationPopup({
     }
   }
 
-  // 호출 횟수에 따른 아이콘과 메시지
+  // 호출 횟수에 따른 아이콘
   const getCallDisplay = () => {
     if (notification.status === 'first_call') {
       return {
@@ -70,7 +79,6 @@ export function SimpleCallNotificationPopup({
             <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
           </svg>
         ),
-        message: '📢 첫 번째 호출',
         pulseCount: 3
       }
     } else if (notification.status === 'second_call') {
@@ -80,7 +88,6 @@ export function SimpleCallNotificationPopup({
             <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
           </svg>
         ),
-        message: '🔔 마지막 호출',
         pulseCount: 4
       }
     } else {
@@ -90,7 +97,6 @@ export function SimpleCallNotificationPopup({
             <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
           </svg>
         ),
-        message: '📢 호출 중입니다',
         pulseCount: 3
       }
     }
@@ -134,12 +140,12 @@ export function SimpleCallNotificationPopup({
             </div>
 
             {/* 주문 정보 */}
-            <div className="space-y-6">
-              <div className="inline-block rounded-2xl bg-white/25 px-8 py-4 text-2xl font-semibold backdrop-blur-sm">
+            <div className="space-y-6 transition-all duration-300">
+              <div className="inline-block rounded-2xl bg-white/25 px-8 py-4 text-2xl font-semibold backdrop-blur-sm transition-all duration-300">
                 {orderTypeText}
               </div>
               <div className="flex flex-col items-center justify-center">
-                <div className="text-8xl font-black tracking-tight">
+                <div className="text-8xl font-black tracking-tight transition-all duration-300">
                   {notification.orderNumber}
                 </div>
                 <div className="text-4xl font-medium">번 고객님</div>
@@ -147,21 +153,18 @@ export function SimpleCallNotificationPopup({
             </div>
 
             {/* 호출 메시지 */}
-            <div className="mt-8">
-              <div className="text-2xl font-medium opacity-90 animate-pulse">
-                {callDisplay.message}
-              </div>
-              {notification.status === 'second_call' && (
-                <div className="text-lg font-medium opacity-75 mt-2">
+            {notification.status === 'second_call' && (
+              <div className="mt-8 transition-all duration-300">
+                <div className="text-lg font-medium opacity-75 transition-opacity duration-500 ease-in-out">
                   픽업 준비가 완료되었습니다
                 </div>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* 호출 횟수 표시 */}
             <div className="mt-6 flex justify-center space-x-2">
-              <div className={`w-3 h-3 rounded-full ${notification.callCount >= 1 ? 'bg-white' : 'bg-white/30'}`} />
-              <div className={`w-3 h-3 rounded-full ${notification.callCount >= 2 ? 'bg-white' : 'bg-white/30'}`} />
+              <div className={`w-3 h-3 rounded-full transition-all duration-300 ${notification.callCount >= 1 ? 'bg-white' : 'bg-white/30'}`} />
+              <div className={`w-3 h-3 rounded-full transition-all duration-300 ${notification.callCount >= 2 ? 'bg-white' : 'bg-white/30'}`} />
             </div>
           </div>
         </div>

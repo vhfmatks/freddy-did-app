@@ -146,27 +146,18 @@ class EnhancedNotificationQueue {
       this.callbacks.onShowPopup(this.currentItem)
     }
 
-    // 팝업 숨김 스케줄링 - 각 호출마다 적절한 표시 시간 보장
+    // 팝업 숨김 스케줄링 - 첫 번째 호출에서는 숨기지 않고, 두 번째 호출에서만 숨김
     if (callNumber === 1) {
-      console.log('[EnhancedNotificationQueue] 첫 번째 호출 - 4초간 표시')
-      // 기존 hideTimer 정리
-      if (this.hideTimer) {
-        clearTimeout(this.hideTimer)
-      }
-      // 첫 번째 호출용 타이머 설정 (4초 표시)
-      this.hideTimer = setTimeout(() => {
-        if (this.callbacks && this.currentItem && this.currentItem.status === 'first_call') {
-          console.log('[EnhancedNotificationQueue] 첫 번째 호출 표시 완료 - 팝업 숨김')
-          this.callbacks.onHidePopup()
-        }
-      }, this.CALL_DURATION)
+      console.log('[EnhancedNotificationQueue] 첫 번째 호출 - 계속 표시 유지 (두 번째 호출까지)')
+      // 첫 번째 호출에서는 팝업을 숨기지 않음
+      // hideTimer 설정하지 않음
     } else {
-      console.log('[EnhancedNotificationQueue] 두 번째 호출 - 4초간 표시')
+      console.log('[EnhancedNotificationQueue] 두 번째 호출 - 4초 후 팝업 숨김')
       // 기존 hideTimer 정리
       if (this.hideTimer) {
         clearTimeout(this.hideTimer)
       }
-      // 두 번째 호출용 타이머 설정 (4초 표시)
+      // 두 번째 호출에서만 숨김 타이머 설정
       this.hideTimer = setTimeout(() => {
         if (this.callbacks) {
           console.log('[EnhancedNotificationQueue] 두 번째 호출 표시 완료 - 팝업 숨김')
