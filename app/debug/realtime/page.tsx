@@ -222,7 +222,18 @@ export default function RealtimeDebugPage() {
 
           {/* Queue Status */}
           {testNotificationEnabled && (
-            <div className="mb-4 grid grid-cols-3 gap-4">
+            <div className="mb-4 space-y-4">
+              <div className="rounded bg-blue-50 p-3 border-l-4 border-blue-400">
+                <h3 className="text-sm font-semibold text-blue-700 mb-2">⏱️ 알림 타이밍 정보</h3>
+                <div className="text-xs text-blue-600 space-y-1">
+                  <p>• 전체 알림 시간: <strong>8초</strong> (첫 번째 호출 → 4초 대기 → 두 번째 호출)</p>
+                  <p>• 팝업 표시: 첫 번째 호출부터 <strong>전체 8초 동안 연속 표시</strong></p>
+                  <p>• 음성 안내: 각 호출당 약 3-4초씩 <strong>총 2번</strong> 재생</p>
+                  <p>• 개선사항: 팝업이 두 번의 음성 안내 동안 계속 표시됨</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-3 gap-4">
               <div className="rounded bg-gray-50 p-3">
                 <h3 className="text-sm font-semibold text-gray-700">Queue 상태</h3>
                 <p className="text-xs text-gray-600">
@@ -252,6 +263,9 @@ export default function RealtimeDebugPage() {
                     <p className="text-xs text-gray-600">
                       호출 횟수: {notificationController.currentNotification.callCount}/2
                     </p>
+                    <p className="text-xs text-gray-600">
+                      팝업 표시: {notificationController.isVisible ? '예' : '아니오'}
+                    </p>
                   </>
                 ) : (
                   <p className="text-xs text-gray-600">없음</p>
@@ -276,6 +290,7 @@ export default function RealtimeDebugPage() {
                   <p className="text-xs text-gray-600">정보 없음</p>
                 )}
               </div>
+            </div>
             </div>
           )}
 
@@ -331,6 +346,32 @@ export default function RealtimeDebugPage() {
                   className="rounded bg-orange-500 px-3 py-1 text-sm text-white hover:bg-orange-600"
                 >
                   🔇 음성 강제 중단
+                </button>
+                <button
+                  onClick={() => {
+                    // TTS 음성 목록 확인
+                    if ('speechSynthesis' in window) {
+                      const voices = window.speechSynthesis.getVoices()
+                      console.log('[Debug] 사용 가능한 TTS 음성:', voices.map(v => ({
+                        name: v.name,
+                        lang: v.lang,
+                        default: v.default,
+                        localService: v.localService
+                      })))
+                      
+                      // 한국어 음성만 필터링
+                      const koreanVoices = voices.filter(v => 
+                        v.lang.includes('ko') || v.lang.includes('kr') || 
+                        v.name.includes('한국') || v.name.includes('Korean')
+                      )
+                      console.log('[Debug] 한국어 TTS 음성:', koreanVoices)
+                      
+                      alert(`TTS 음성 ${voices.length}개 발견 (한국어: ${koreanVoices.length}개). 콘솔 확인하세요.`)
+                    }
+                  }}
+                  className="rounded bg-blue-500 px-3 py-1 text-sm text-white hover:bg-blue-600"
+                >
+                  🎤 음성 목록 확인
                 </button>
                 <button
                   onClick={notificationController.clearQueue}

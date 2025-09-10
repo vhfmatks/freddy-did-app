@@ -19,76 +19,77 @@ export function OrderNotifications({ calls }: OrderNotificationsProps) {
     })
   }, [calls])
 
-  // Separate calls by type with additional logging
-  const takeoutCalls = calls.filter(call => call.type === 'takeout')
-  const dineInCalls = calls.filter(call => call.type === 'dine_in')
+  // 통합 리스트 - 시간순 정렬 (최신순)
+  const allCalls = [...calls].sort((a, b) => new Date(b.called_at).getTime() - new Date(a.called_at).getTime())
   
-  console.log('[OrderNotifications] Filtered - Takeout:', takeoutCalls.length, 'Dine-in:', dineInCalls.length)
+  console.log('[OrderNotifications] Unified calls:', allCalls.length, 'total')
+
+  // 색깔 및 타입별 표시 텍스트 정의
+  const getOrderDisplayInfo = (call: OrderCall) => {
+    if (call.type === 'dine_in') {
+      return {
+        bgColor: 'bg-gradient-to-r from-indigo-500 to-indigo-600',
+        typeText: '매장',
+        typeColor: 'text-indigo-100'
+      }
+    } else {
+      return {
+        bgColor: 'bg-gradient-to-r from-emerald-500 to-emerald-600',
+        typeText: '포장',
+        typeColor: 'text-emerald-100'
+      }
+    }
+  }
 
   return (
     <div className="h-full flex flex-col">
-      {/* 매장 Section - Top 50% */}
-      <div className="h-1/2 p-4 flex flex-col">
-        <h2 className="mb-3 text-center text-2xl font-semibold text-indigo-600">
-          매장
+      {/* 통합 주문 리스트 */}
+      <div className="h-full p-4 flex flex-col">
+        <h2 className="mb-3 text-center text-2xl font-semibold text-gray-700">
+          주문 대기
         </h2>
-        <div className="flex-1 overflow-hidden space-y-2">
-          {dineInCalls.length === 0 ? (
+        <div className="flex-1 overflow-y-auto space-y-3">
+          {allCalls.length === 0 ? (
             <div className="text-center text-lg text-gray-400 flex items-center justify-center h-full">
-              대기 중인 매장 주문이 없습니다
+              대기 중인 주문이 없습니다
             </div>
           ) : (
-            dineInCalls.map((call, index) => (
-              <div
-                key={call.id}
-                className={`mx-auto max-w-[80%] transform rounded-lg p-4 text-white shadow-lg transition-all duration-500 ${
-                  index === 0 ? 'scale-105' : ''
-                } bg-gradient-to-r from-indigo-500 to-indigo-600`}
-                style={{
-                  animation: index === 0 ? 'pulse 2s infinite' : undefined
-                }}
-              >
-                <div className="flex items-center justify-center">
-                  <span className="text-3xl font-bold">
-                    {call.number}
-                  </span>
-                  <span className="text-xl ml-1">번</span>
+            allCalls.map((call, index) => {
+              const displayInfo = getOrderDisplayInfo(call)
+              return (
+                <div
+                  key={call.id}
+                  className={`mx-auto max-w-[85%] transform rounded-lg p-4 text-white shadow-lg transition-all duration-500 ${
+                    index === 0 ? 'scale-105' : ''
+                  } ${displayInfo.bgColor}`}
+                  style={{
+                    animation: index === 0 ? 'pulse 2s infinite' : undefined
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex flex-col items-center flex-1">
+                      <div className="flex items-center">
+                        <span className="text-3xl font-bold">
+                          {call.number}
+                        </span>
+                        <span className="text-xl ml-1">번</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className={`text-sm font-medium ${displayInfo.typeColor}`}>
+                        {displayInfo.typeText}
+                      </span>
+                      <span className="text-xs text-white/70">
+                        {new Date(call.called_at).toLocaleTimeString('ko-KR', {
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* 포장 Section - Bottom 50% */}
-      <div className="h-1/2 p-4 flex flex-col border-t border-gray-200">
-        <h2 className="mb-3 text-center text-2xl font-semibold text-emerald-600">
-          포장
-        </h2>
-        <div className="flex-1 overflow-hidden space-y-2">
-          {takeoutCalls.length === 0 ? (
-            <div className="text-center text-lg text-gray-400 flex items-center justify-center h-full">
-              대기 중인 포장 주문이 없습니다
-            </div>
-          ) : (
-            takeoutCalls.map((call, index) => (
-              <div
-                key={call.id}
-                className={`mx-auto max-w-[80%] transform rounded-lg p-4 text-white shadow-lg transition-all duration-500 ${
-                  index === 0 ? 'scale-105' : ''
-                } bg-gradient-to-r from-emerald-500 to-emerald-600`}
-                style={{
-                  animation: index === 0 ? 'pulse 2s infinite' : undefined
-                }}
-              >
-                <div className="flex items-center justify-center">
-                  <span className="text-3xl font-bold">
-                    {call.number}
-                  </span>
-                  <span className="text-xl ml-1">번</span>
-                </div>
-              </div>
-            ))
+              )
+            })
           )}
         </div>
       </div>

@@ -35,8 +35,8 @@ class EnhancedNotificationQueue {
   private speechCancelTimer: NodeJS.Timeout | null = null
 
   // 설정값
-  private readonly CALL_DURATION = 3000 // 각 호출 표시 시간 (3초)
-  private readonly CALL_INTERVAL = 4000 // 호출 간격 (4초)
+  private readonly CALL_DURATION = 4000 // 각 호출 표시 시간 (4초)
+  private readonly CALL_INTERVAL = 5000 // 호출 간격 (5초)
   private readonly HIDE_DELAY = 1000 // 숨김 지연 시간 (1초)
   private readonly SPEECH_CANCEL_DELAY = 200 // 음성 중단 후 대기 시간 (200ms)
 
@@ -106,14 +106,18 @@ class EnhancedNotificationQueue {
       if (this.currentItem && this.currentItem.status !== 'completed') {
         await this.executeCall(2)
         
-        // 완료 처리
-        this.completeCurrentItem()
+        // 두 번째 호출 표시 완료 후 알림 완료 처리 스케줄링
+        setTimeout(() => {
+          if (this.currentItem && this.currentItem.status === 'second_call') {
+            this.completeCurrentItem()
+          }
+        }, this.CALL_DURATION)
       }
     }, this.CALL_INTERVAL)
   }
 
   /**
-   * 단일 호출 실행 (팝업 + 음성)
+   * 단일 호출 실행 (음성 준비 후 팝업 표시)
    */
   private async executeCall(callNumber: 1 | 2): Promise<void> {
     if (!this.currentItem || !this.callbacks) return
@@ -125,26 +129,73 @@ class EnhancedNotificationQueue {
     this.currentItem.callCount = callNumber
     this.currentItem.lastCallTime = Date.now()
 
-    // 팝업 표시
-    this.callbacks.onShowPopup(this.currentItem)
-
-    // 음성 안내 (안전하게 처리)
     try {
+      // 1. 먼저 음성 준비 (프리로드만)
+      await this.prepareSpeechAnnouncement(this.currentItem)
+      
+      // 2. 음성 준비 완료 후 팝업 표시 (타이밍 최적화)
+      this.callbacks.onShowPopup(this.currentItem)
+      
+      // 3. 짧은 지연 후 음성 재생 (팝업과 동기화)
+      await this.delay(50)
       await this.playVoiceAnnouncement(this.currentItem)
+      
     } catch (error) {
-      console.error(`[EnhancedNotificationQueue] ${callNumber}번째 호출 음성 재생 실패:`, error)
+      console.error(`[EnhancedNotificationQueue] ${callNumber}번째 호출 실행 실패:`, error)
+      // 오류 발생 시에도 팝업은 표시
+      this.callbacks.onShowPopup(this.currentItem)
     }
 
-    // 팝업 숨김 스케줄링
-    this.hideTimer = setTimeout(() => {
-      if (this.callbacks) {
-        this.callbacks.onHidePopup()
+    // 팝업 숨김 스케줄링 - 각 호출마다 적절한 표시 시간 보장
+    if (callNumber === 1) {
+      console.log('[EnhancedNotificationQueue] 첫 번째 호출 - 4초간 표시')
+      // 기존 hideTimer 정리
+      if (this.hideTimer) {
+        clearTimeout(this.hideTimer)
       }
-    }, this.CALL_DURATION)
+      // 첫 번째 호출용 타이머 설정 (4초 표시)
+      this.hideTimer = setTimeout(() => {
+        if (this.callbacks && this.currentItem && this.currentItem.status === 'first_call') {
+          console.log('[EnhancedNotificationQueue] 첫 번째 호출 표시 완료 - 팝업 숨김')
+          this.callbacks.onHidePopup()
+        }
+      }, this.CALL_DURATION)
+    } else {
+      console.log('[EnhancedNotificationQueue] 두 번째 호출 - 4초간 표시')
+      // 기존 hideTimer 정리
+      if (this.hideTimer) {
+        clearTimeout(this.hideTimer)
+      }
+      // 두 번째 호출용 타이머 설정 (4초 표시)
+      this.hideTimer = setTimeout(() => {
+        if (this.callbacks) {
+          console.log('[EnhancedNotificationQueue] 두 번째 호출 표시 완료 - 팝업 숨김')
+          this.callbacks.onHidePopup()
+        }
+      }, this.CALL_DURATION)
+    }
   }
 
   /**
-   * 음성 안내 재생 (안전한 버전)
+   * 음성 안내 준비 (프리로드만 수행)
+   */
+  private async prepareSpeechAnnouncement(item: NotificationItem): Promise<void> {
+    if (!('speechSynthesis' in window)) {
+      console.log('[EnhancedNotificationQueue] 음성 합성 지원되지 않음')
+      return
+    }
+
+    try {
+      // TTS 엔진 프리로드로 준비 상태 확보
+      await this.preloadSpeechEngine()
+      console.log(`[EnhancedNotificationQueue] ${item.callCount}번째 음성 준비 완료`)
+    } catch (error) {
+      console.error('[EnhancedNotificationQueue] 음성 준비 실패:', error)
+    }
+  }
+
+  /**
+   * 음성 안내 재생 (개선된 버전 - 앞부분 잘림 방지)
    */
   private async playVoiceAnnouncement(item: NotificationItem): Promise<void> {
     if (!('speechSynthesis' in window)) {
@@ -157,11 +208,20 @@ class EnhancedNotificationQueue {
       await this.stopCurrentSpeech()
 
       const announcementText = createKoreanAnnouncement(item.orderType, item.orderNumber)
-      const utterance = new SpeechSynthesisUtterance(announcementText)
+      
+      // 앞부분 잘림 방지를 위한 여러 기법 적용
+      const enhancedText = ". " + announcementText // 앞에 짧은 무음 추가
+      const utterance = new SpeechSynthesisUtterance(enhancedText)
+      
+      // 최적의 한국어 음성 선택
+      const bestVoice = this.selectBestKoreanVoice()
+      if (bestVoice) {
+        utterance.voice = bestVoice
+      }
       
       utterance.lang = 'ko-KR'
       utterance.volume = 0.8
-      utterance.rate = 0.9
+      utterance.rate = 0.85 // 약간 느리게 (명확성 개선)
       utterance.pitch = 1.0
 
       // 음성 재생 상태 관리
@@ -208,8 +268,8 @@ class EnhancedNotificationQueue {
         }
       }
 
-      // 음성 재생 실행
-      console.log(`[EnhancedNotificationQueue] ${item.callCount}번째 음성 재생 요청:`, announcementText)
+      // 음성 재생 실행 (지연 없이 즉시 - 이미 준비됨)
+      console.log(`[EnhancedNotificationQueue] ${item.callCount}번째 음성 재생 시작:`, announcementText)
       window.speechSynthesis.speak(utterance)
 
     } catch (error) {
@@ -217,6 +277,112 @@ class EnhancedNotificationQueue {
       this.isSpeaking = false
       this.currentUtterance = null
     }
+  }
+
+  /**
+   * TTS 엔진 프리로드 (앞부분 잘림 방지)
+   */
+  private preloadSpeechEngine(): Promise<void> {
+    return new Promise((resolve) => {
+      // 이미 음성이 준비되어 있으면 즉시 반환
+      if (window.speechSynthesis.getVoices().length > 0) {
+        resolve()
+        return
+      }
+
+      // voices가 로드될 때까지 대기
+      const handleVoicesChanged = () => {
+        console.log('[EnhancedNotificationQueue] TTS 음성 목록 로드됨')
+        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged)
+        resolve()
+      }
+
+      // voiceschanged 이벤트 리스너 등록
+      window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged)
+
+      // 무음 테스트로 엔진 활성화
+      const silentUtterance = new SpeechSynthesisUtterance('.')
+      silentUtterance.volume = 0
+      silentUtterance.lang = 'ko-KR'
+      silentUtterance.rate = 1.0
+      
+      silentUtterance.onend = () => {
+        console.log('[EnhancedNotificationQueue] TTS 엔진 무음 테스트 완료')
+        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged)
+        resolve()
+      }
+      
+      silentUtterance.onerror = () => {
+        console.log('[EnhancedNotificationQueue] TTS 엔진 무음 테스트 실패, 계속 진행')
+        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged)
+        resolve()
+      }
+
+      // 타임아웃 설정 (너무 오래 기다리지 않음)
+      setTimeout(() => {
+        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged)
+        resolve()
+      }, 300) // 300ms로 늘림
+
+      try {
+        window.speechSynthesis.speak(silentUtterance)
+      } catch (error) {
+        console.log('[EnhancedNotificationQueue] TTS 엔진 프리로드 중 오류:', error)
+        window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged)
+        resolve()
+      }
+    })
+  }
+
+  /**
+   * 최적의 한국어 음성 선택
+   */
+  private selectBestKoreanVoice(): SpeechSynthesisVoice | null {
+    const voices = window.speechSynthesis.getVoices()
+    
+    // 한국어 음성 우선순위
+    const koreanVoiceNames = [
+      'Microsoft Heami - Korean (Korea)',
+      'Google 한국의',
+      'Alex',
+      '한국어'
+    ]
+
+    // 우선순위대로 음성 검색
+    for (const voiceName of koreanVoiceNames) {
+      const voice = voices.find(v => 
+        v.name.includes(voiceName) || 
+        v.lang.includes('ko') ||
+        v.lang.includes('kr')
+      )
+      if (voice) {
+        console.log('[EnhancedNotificationQueue] 선택된 음성:', voice.name, voice.lang)
+        return voice
+      }
+    }
+
+    // 한국어 음성 찾기
+    const koreanVoice = voices.find(voice => 
+      voice.lang.startsWith('ko') || 
+      voice.lang.includes('kr') ||
+      voice.name.includes('한국') ||
+      voice.name.includes('Korean')
+    )
+
+    if (koreanVoice) {
+      console.log('[EnhancedNotificationQueue] 발견된 한국어 음성:', koreanVoice.name, koreanVoice.lang)
+      return koreanVoice
+    }
+
+    console.log('[EnhancedNotificationQueue] 한국어 음성을 찾지 못함, 기본 음성 사용')
+    return null
+  }
+
+  /**
+   * 지연 유틸리티
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
   }
 
   /**
