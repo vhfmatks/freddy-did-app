@@ -141,25 +141,16 @@ export function SimpleCallNotificationPopup({
 
             {/* 주문 정보 */}
             <div className="space-y-6 transition-all duration-300">
-              <div className="inline-block rounded-2xl bg-white/25 px-8 py-4 text-2xl font-semibold backdrop-blur-sm transition-all duration-300">
+              <div className="inline-block rounded-2xl bg-white/25 px-8 py-4 text-3xl font-semibold backdrop-blur-sm transition-all duration-300">
                 {orderTypeText}
               </div>
-              <div className="flex flex-col items-center justify-center">
+              <div className="flex flex-row gap-2 items-center justify-center">
                 <div className="text-8xl font-black tracking-tight transition-all duration-300">
                   {notification.orderNumber}
                 </div>
-                <div className="text-4xl font-medium">번 고객님</div>
+                <div className="text-4xl font-medium">번</div>
               </div>
             </div>
-
-            {/* 호출 메시지 */}
-            {notification.status === 'second_call' && (
-              <div className="mt-8 transition-all duration-300">
-                <div className="text-lg font-medium opacity-75 transition-opacity duration-500 ease-in-out">
-                  픽업 준비가 완료되었습니다
-                </div>
-              </div>
-            )}
 
             {/* 호출 횟수 표시 */}
             <div className="mt-6 flex justify-center space-x-2">

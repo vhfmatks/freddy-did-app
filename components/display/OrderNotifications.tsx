@@ -45,13 +45,13 @@ export function OrderNotifications({ calls }: OrderNotificationsProps) {
     <div className="h-full flex flex-col">
       {/* 통합 주문 리스트 */}
       <div className="h-full p-4 flex flex-col">
-        <h2 className="mb-3 text-center text-2xl font-semibold text-gray-700">
-          주문 대기
+        <h2 className="mb-3 h-10 text-center text-2xl font-semibold text-gray-700">
+        
         </h2>
         <div className="flex-1 overflow-y-auto space-y-3">
           {allCalls.length === 0 ? (
             <div className="text-center text-lg text-gray-400 flex items-center justify-center h-full">
-              대기 중인 주문이 없습니다
+              
             </div>
           ) : (
             allCalls.map((call, index) => {
@@ -66,25 +66,15 @@ export function OrderNotifications({ calls }: OrderNotificationsProps) {
                     animation: index === 0 ? 'pulse 2s infinite' : undefined
                   }}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col items-center flex-1">
-                      <div className="flex items-center">
-                        <span className="text-3xl font-bold">
-                          {call.number}
-                        </span>
-                        <span className="text-xl ml-1">번</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end">
-                      <span className={`text-sm font-medium ${displayInfo.typeColor}`}>
+                  <div className="flex flex-col items-center justify-center">
+                    <div className="flex items-center">
+                      <span className={`text-lg font-medium ${displayInfo.typeColor} opacity-85 mr-2`}>
                         {displayInfo.typeText}
                       </span>
-                      <span className="text-xs text-white/70">
-                        {new Date(call.called_at).toLocaleTimeString('ko-KR', {
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+                      <span className="text-4xl font-bold">
+                        {call.number}
                       </span>
+                      {/* <span className="text-2xl ml-1">번</span> */}
                     </div>
                   </div>
                 </div>
