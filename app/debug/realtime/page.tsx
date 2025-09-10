@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useOrderCallsRealtime } from '@/lib/hooks/useOrderCallsRealtime'
+import { useNotificationController } from '@/lib/hooks/useNotificationController'
+import { SimpleCallNotificationPopup } from '@/components/ui/SimpleCallNotificationPopup'
 import { Database } from '@/types/database'
 
 type OrderCall = Database['public']['Tables']['order_calls']['Row']
@@ -12,7 +14,15 @@ export default function RealtimeDebugPage() {
   const [events, setEvents] = useState<any[]>([])
   const [isMonitoring, setIsMonitoring] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'disconnected'>('disconnected')
+  const [testNotificationEnabled, setTestNotificationEnabled] = useState(false)
   const supabase = createClient()
+
+  // 새로운 알림 시스템 테스트
+  const notificationController = useNotificationController({
+    storeId: testNotificationEnabled ? storeId : '',
+    audioEnabled: true,
+    debug: true
+  })
 
   // Use the realtime hook when monitoring
   useOrderCallsRealtime({
@@ -192,6 +202,147 @@ export default function RealtimeDebugPage() {
           </div>
         )}
 
+        {/* Enhanced Notification System Test */}
+        <div className="mb-6 rounded-lg bg-white p-6 shadow">
+          <h2 className="mb-4 text-xl font-semibold">새로운 알림 시스템 테스트</h2>
+          
+          {/* Enable/Disable Toggle */}
+          <div className="mb-4">
+            <label className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                checked={testNotificationEnabled}
+                onChange={(e) => setTestNotificationEnabled(e.target.checked)}
+                disabled={!storeId}
+                className="rounded"
+              />
+              <span className="text-sm">알림 시스템 활성화 ({storeId || 'Store ID 필요'})</span>
+            </label>
+          </div>
+
+          {/* Queue Status */}
+          {testNotificationEnabled && (
+            <div className="mb-4 grid grid-cols-3 gap-4">
+              <div className="rounded bg-gray-50 p-3">
+                <h3 className="text-sm font-semibold text-gray-700">Queue 상태</h3>
+                <p className="text-xs text-gray-600">
+                  처리중: {notificationController.queueStatus.isProcessing ? '예' : '아니오'}
+                </p>
+                <p className="text-xs text-gray-600">
+                  대기 수: {notificationController.queueStatus.queueSize}
+                </p>
+                <p className="text-xs text-gray-600">
+                  연결 상태: {notificationController.isConnected ? '연결됨' : '연결 안됨'}
+                </p>
+              </div>
+              
+              <div className="rounded bg-gray-50 p-3">
+                <h3 className="text-sm font-semibold text-gray-700">현재 알림</h3>
+                {notificationController.currentNotification ? (
+                  <>
+                    <p className="text-xs text-gray-600">
+                      타입: {notificationController.currentNotification.orderType === 'takeout' ? '포장' : '매장'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      번호: {notificationController.currentNotification.orderNumber}번
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      상태: {notificationController.currentNotification.status}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      호출 횟수: {notificationController.currentNotification.callCount}/2
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-600">없음</p>
+                )}
+              </div>
+
+              <div className="rounded bg-gray-50 p-3">
+                <h3 className="text-sm font-semibold text-gray-700">음성 상태</h3>
+                {(notificationController.queueStatus as any).speech ? (
+                  <>
+                    <p className="text-xs text-gray-600">
+                      재생중: {(notificationController.queueStatus as any).speech.isSpeaking ? '예' : '아니오'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      Utterance: {(notificationController.queueStatus as any).speech.hasCurrentUtterance ? '활성' : '없음'}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      브라우저: {(notificationController.queueStatus as any).speech.browserSpeaking ? '재생중' : '정지'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-600">정보 없음</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Test Controls */}
+          {testNotificationEnabled && (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => notificationController.addTestNotification('takeout', Math.floor(Math.random() * 99) + 1)}
+                  className="rounded bg-emerald-500 px-3 py-1 text-sm text-white hover:bg-emerald-600"
+                >
+                  포장 테스트 알림
+                </button>
+                <button
+                  onClick={() => notificationController.addTestNotification('dine_in', Math.floor(Math.random() * 99) + 1)}
+                  className="rounded bg-indigo-500 px-3 py-1 text-sm text-white hover:bg-indigo-600"
+                >
+                  매장 테스트 알림
+                </button>
+                <button
+                  onClick={() => {
+                    // 연속으로 여러 알림을 빠르게 추가해서 충돌 테스트
+                    for (let i = 0; i < 3; i++) {
+                      setTimeout(() => {
+                        notificationController.addTestNotification(
+                          Math.random() > 0.5 ? 'takeout' : 'dine_in', 
+                          Math.floor(Math.random() * 99) + 1
+                        )
+                      }, i * 100)
+                    }
+                  }}
+                  className="rounded bg-purple-500 px-3 py-1 text-sm text-white hover:bg-purple-600"
+                >
+                  🚀 충돌 테스트 (3개 연속)
+                </button>
+              </div>
+              
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={notificationController.forceComplete}
+                  className="rounded bg-yellow-500 px-3 py-1 text-sm text-white hover:bg-yellow-600"
+                >
+                  현재 알림 강제 완료
+                </button>
+                <button
+                  onClick={() => {
+                    // 음성 중단 테스트
+                    if ('speechSynthesis' in window) {
+                      window.speechSynthesis.cancel()
+                      console.log('[Debug] 음성 강제 중단 실행됨')
+                    }
+                  }}
+                  className="rounded bg-orange-500 px-3 py-1 text-sm text-white hover:bg-orange-600"
+                >
+                  🔇 음성 강제 중단
+                </button>
+                <button
+                  onClick={notificationController.clearQueue}
+                  className="rounded bg-red-500 px-3 py-1 text-sm text-white hover:bg-red-600"
+                >
+                  큐 전체 초기화
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Events Log */}
         <div className="rounded-lg bg-white p-6 shadow">
           <h2 className="mb-4 text-xl font-semibold">Realtime Events Log</h2>
@@ -237,6 +388,14 @@ export default function RealtimeDebugPage() {
           </ol>
         </div>
       </div>
+
+      {/* 알림 팝업 표시 */}
+      {testNotificationEnabled && (
+        <SimpleCallNotificationPopup
+          notification={notificationController.currentNotification}
+          isVisible={notificationController.isVisible}
+        />
+      )}
     </div>
   )
 }
